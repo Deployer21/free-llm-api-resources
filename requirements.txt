@@ -2,5 +2,5 @@ requests==2.33.1
 python-dotenv==1.2.2
 google-cloud-quotas==0.6.0
 beautifulsoup4==4.14.3
-python-telegram-bot==20.7
+python-telegram-bot>=21.0
 aiohttp
