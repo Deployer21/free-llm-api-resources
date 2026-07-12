@@ -10,6 +10,15 @@ from telegram.ext import (
     ContextTypes,
 )
 
+# ===== AMBIL DARI ENVIRONMENT VARIABLES =====
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+AGNES_API_KEY = os.getenv("AGNES_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "downloads")
+
+# Buat direktori downloads
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
 # Setup logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -313,26 +322,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Proses gambar + prompt
         caption = update.message.caption or ""
         photos = update.message.photo
-        documents = update.message.document
         
         if photos:
             # Ambil foto terbesar
             photo = photos[-1]
             file = await photo.get_file()
-            file_path = f"downloads/user_{user_id}_input.jpg"
-            await file.download_to_drive(file_path)
-            
-            await update.message.reply_text(
-                f"📥 Gambar diterima! Sekarang kirimkan prompt atau deskripsi video yang kamu inginkan.\n\n"
-                f"📝 Prompt saat ini: {caption[:100] if caption else '(kosong)'}"
-            )
-            context.user_data['image_path'] = file_path
-            context.user_data['prompt'] = caption
-            
-        elif documents and documents[0].mime_type and documents[0].mime_type.startswith('image/'):
-            doc = documents[0]
-            file = await doc.get_file()
-            file_path = f"downloads/user_{user_id}_input.{doc.file_name.split('.')[-1]}"
+            file_path = os.path.join(DOWNLOAD_DIR, f"user_{user_id}_input.jpg")
             await file.download_to_drive(file_path)
             
             await update.message.reply_text(
@@ -370,11 +365,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===== MAIN =====
 def main():
     """Main function untuk menjalankan bot"""
-    # Buat direktori downloads jika belum ada
-    os.makedirs(config.DOWNLOAD_DIR, exist_ok=True)
+    # Validasi TELEGRAM_TOKEN
+    if not TELEGRAM_TOKEN:
+        logger.error("❌ TELEGRAM_TOKEN tidak ditemukan! Set di Environment Variables Railway.")
+        return
     
     # Inisialisasi aplikasi
-    application = Application.builder().token(config.TELEGRAM_TOKEN).build()
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
     
     # Daftarkan handler
     application.add_handler(CommandHandler("start", start))
@@ -383,7 +380,7 @@ def main():
     application.add_handler(MessageHandler(filters.ALL, handle_message))
     
     # Jalankan bot
-    print("🤖 Bot AI Video berjalan...")
+    logger.info("🤖 Bot AI Video berjalan...")
     application.run_polling()
 
 if __name__ == "__main__":
