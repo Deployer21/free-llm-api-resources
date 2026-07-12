@@ -27,60 +27,66 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ============================================================
 # ===== FUNGSI GENERATE VIDEO DENGAN AGNES AI =====
+# ============================================================
 async def generate_video_with_agnes(prompt: str, image_path: str = None, duration: int = 5, model: str = "agnes") -> str:
     """Generate video menggunakan Agnes AI API"""
     
-    API_URL = "https://apihub.agnes-ai.com/v1/video"
+    # ===== ENDPOINT AGNES AI (YANG BENAR) =====
+    BASE_URL = "https://apihub.agnes-ai.com"
+    UPLOAD_URL = f"{BASE_URL}/upload"
+    GENERATE_URL = f"{BASE_URL}/generate"
     
     headers = {
         "Authorization": f"Bearer {AGNES_API_KEY}",
-        "Content-Type": "application/json"
+        "Accept": "application/json"
     }
     
-    payload = {
-        "model": "agnes-video-2.5-preview",
-        "prompt": prompt,
-        "duration": duration,
-        "resolution": "720p"
-    }
-    
-    # Jika ada gambar, upload ke Agnes
+    # ===== 1. UPLOAD GAMBAR (JIKA ADA) =====
+    image_url = None
     if image_path and os.path.exists(image_path):
-        upload_url = "https://apihub.agnes-ai.com/v1/upload"
         try:
             async with aiohttp.ClientSession() as session:
                 with open(image_path, 'rb') as f:
                     form_data = aiohttp.FormData()
-                    form_data.add_field('file', f, filename='image.jpg')
-                    async with session.post(upload_url, headers={"Authorization": f"Bearer {AGNES_API_KEY}"}, data=form_data) as resp:
+                    form_data.add_field('file', f, filename='image.jpg', content_type='image/jpeg')
+                    async with session.post(UPLOAD_URL, headers={"Authorization": f"Bearer {AGNES_API_KEY}"}, data=form_data) as resp:
                         if resp.status == 200:
                             data = await resp.json()
-                            image_url = data.get('url')
+                            image_url = data.get('url') or data.get('data', {}).get('url')
                             if image_url:
-                                payload['image'] = image_url
-                                logger.info(f"Upload gambar berhasil: {image_url}")
+                                logger.info(f"✅ Upload gambar berhasil: {image_url}")
                             else:
-                                logger.warning(f"Upload gambar berhasil tapi tidak ada URL: {data}")
+                                logger.warning(f"Upload berhasil tapi tidak ada URL: {data}")
                         else:
                             error_text = await resp.text()
                             logger.warning(f"Upload gambar gagal: {resp.status} - {error_text}")
         except Exception as e:
             logger.error(f"Error upload gambar: {str(e)}")
     
-    # Panggil API generate video
+    # ===== 2. GENERATE VIDEO =====
+    payload = {
+        "prompt": prompt,
+        "duration": duration,
+        "resolution": "720p",
+        "model": "agnes-video-2.5-preview" if model == "agnes" else "seedance-2.0"
+    }
+    if image_url:
+        payload["image"] = image_url
+    
     async with aiohttp.ClientSession() as session:
-        async with session.post(API_URL, headers=headers, json=payload) as response:
+        async with session.post(GENERATE_URL, headers=headers, json=payload) as response:
             if response.status == 200:
                 result = await response.json()
-                task_id = result.get('task_id')
+                task_id = result.get('task_id') or result.get('id')
                 
                 if not task_id:
                     logger.error(f"No task_id in response: {result}")
                     return None
                 
-                # Polling status
-                status_url = f"https://apihub.agnes-ai.com/v1/video/{task_id}"
+                # ===== 3. POLLING STATUS =====
+                status_url = f"{BASE_URL}/status/{task_id}"
                 for _ in range(60):  # 60x polling, 3 detik interval = 3 menit
                     await asyncio.sleep(3)
                     try:
@@ -99,7 +105,6 @@ async def generate_video_with_agnes(prompt: str, image_path: str = None, duratio
                                     raise Exception(f"Generasi video gagal: {error_msg}")
                     except Exception as e:
                         logger.error(f"Error polling status: {str(e)}")
-                        await asyncio.sleep(3)
                         continue
                 
                 raise Exception("Timeout: Video tidak selesai dalam 3 menit")
@@ -122,7 +127,9 @@ async def download_video(url: str, path: str):
             else:
                 raise Exception(f"Download gagal: {response.status}")
 
+# ============================================================
 # ===== FUNGSI MENU =====
+# ============================================================
 def get_main_menu():
     keyboard = [
         [
@@ -180,7 +187,9 @@ def get_settings_menu():
     ]
     return InlineKeyboardMarkup(keyboard)
 
+# ============================================================
 # ===== HANDLER COMMAND =====
+# ============================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "🎬 **Selamat Datang di AI Video Creator Bot!**\n\n"
@@ -226,7 +235,9 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
+# ============================================================
 # ===== HANDLER CALLBACK =====
+# ============================================================
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -424,7 +435,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
         )
 
+# ============================================================
 # ===== HANDLER PESAN =====
+# ============================================================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     caption = update.message.caption or ""
@@ -472,16 +485,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
         )
 
+# ============================================================
 # ===== MAIN =====
-async def ping_agnes_api():
-    """Cek koneksi ke Agnes AI API"""
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://apihub.agnes-ai.com/v1/health") as resp:
-                return resp.status == 200
-    except:
-        return False
-
+# ============================================================
 def main():
     if not TELEGRAM_TOKEN:
         logger.error("❌ TELEGRAM_TOKEN tidak ditemukan!")
