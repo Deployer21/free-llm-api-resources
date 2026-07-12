@@ -1,4 +1,3 @@
-# bot.py
 import os
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -10,9 +9,6 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-
-# Import konfigurasi
-import config
 
 # Setup logging
 logging.basicConfig(
